@@ -1,0 +1,206 @@
+=======================================================================================================================
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This function applies the Monte Carlo method to value European options in CRR Binomial tree
+'   Input:
+'       optType     "c" for call, "p" for put option
+'       S0          spot price of the underlying security (stock)
+'       K           strike price of the option
+'       T           time to maturity
+'       r           risk free interest rate
+'       q           dividend yield
+'       v           volatility of the underlying security
+'       n           number of steps in the binomial tree
+'       Runs        number of time paths to simulate
+'   Output:
+'       MCMEuroBin  simulated price of the European option
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Function MCMEuroBin(ByVal optType As String, ByVal S0 As Double, ByVal K As Double, _
+    ByVal T As Double, ByVal r As Double, ByVal q As Double, ByVal v As Double, _
+    ByVal n As Long, ByVal Runs As Long)
+ 
+    Dim dt, u, d, Pu                           'binomial tree parameters
+    Dim C_P As Integer                         'to indicate the option is call or put
+    Dim m As Long                              'running counter through the runs (trials)
+    Dim j As Long                              'running counter through the time step
+    Dim DownCounter As Long                    'count number of down states
+    Dim temp, value                            'temporary variables
+    
+    Select Case optType
+    Case "c"
+        C_P = 1
+    Case "p"
+        C_P = -1
+    Case Else
+        MCMEuroBin = CVErr(xlErrValue)
+        Exit Function
+    End Select
+    
+    dt = T / n
+    u = Exp(v * Sqr(dt))
+    d = 1 / u
+    Pu = (Exp((r - q) * dt) - d) / (u - d)
+    
+    temp = 0
+    For m = 1 To Runs
+        DownCounter = 0
+        'Simulate terminal price
+        For j = 1 To n
+            If Rnd > Pu Then DownCounter = DownCounter + 1
+        Next j
+        value = WorksheetFunction.Max(C_P * (S0 * u ^ (n - DownCounter) * d ^ DownCounter - K), 0)
+        temp = temp + value
+    Next m
+    MCMEuroBin = Exp(-r * T) * temp / Runs
+    
+End Function
+
+=======================================================================================================================
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This function applies the Monte Carlo method to value average price (Asian) options in CRR Binomial tree
+' Terminal payoff of the Asian option is max(optType*(Average asset price - Strike),0)
+' Average price is calculated as arithmetic average of stock prices at each time step.
+
+'   Input:
+'       optType     "c" for call, "p" for put option
+'       S0          spot price of the underlying security (stock)
+'       K           strike price of the option
+'       T           time to maturity
+'       r           risk free interest rate
+'       q           dividend yield
+'       v           volatility of the underlying security
+'       n           number of steps in the binomial tree
+'       Runs        number of time paths to simulate
+'   Output:
+'       MCMEuroBin  simulated price of the European option
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Function MCMAsianBin(ByVal optType As String, ByVal S0 As Double, ByVal K As Double, _
+    ByVal T As Double, ByVal r As Double, ByVal q As Double, ByVal v As Double, _
+    ByVal n As Long, ByVal Runs As Long)
+ 
+    Dim PricePath()                            'Simulate a time path of underlying asset
+    Dim PriceAverage                           'Average asset price
+    Dim dt, u, d, Pu                           'binomial tree parameters
+    Dim C_P As Integer                         'to indicate the option is call or put
+    Dim m As Long                              'running counter through the runs (trials)
+    Dim j As Long                              'running counter through the time step
+    Dim temp, value                            'temporary variables
+    
+    Select Case optType
+    Case "c"
+        C_P = 1
+    Case "p"
+        C_P = -1
+    Case Else
+        MCMAsianBin = CVErr(xlErrValue)
+        Exit Function
+    End Select
+    
+    dt = T / n
+    u = Exp(v * Sqr(dt))
+    d = 1 / u
+    Pu = (Exp((r - q) * dt) - d) / (u - d)
+ 
+    ReDim PricePath(n)
+    temp = 0
+    PricePath(0) = S0
+    For m = 1 To Runs
+        For j = 1 To n
+            If Rnd < Pu Then
+                PricePath(j) = PricePath(j - 1) * u
+            Else
+                PricePath(j) = PricePath(j - 1) * d
+            End If
+        Next j
+        
+        PriceAverage = (WorksheetFunction.sum(PricePath) - PricePath(0)) / n
+        value = WorksheetFunction.Max(C_P * (PriceAverage - K), 0) * Exp(-r * T)
+        temp = temp + value
+    Next m
+    
+    MCMAsianBin = temp / Runs
+End Function
+
+
+=======================================================================================================================
+
+
+Function MCMEuroGBM(ByVal optType As String, ByVal S0 As Double, ByVal K As Double, _
+    ByVal T As Double, ByVal r As Double, ByVal q As Double, ByVal v As Double, ByVal Runs As Long)
+
+    Dim sum, i, C_P
+    Dim sharePrice, payoff
+    
+    If optType = "c" Then
+         C_P = 1
+    ElseIf optType = "p" Then
+        C_P = -1
+    Else
+        MCMEuroGBM = CVErr(xlErrValue)
+        Exit Function
+    End If
+    
+    sum = 0
+    For i = 1 To Runs
+        sharePrice = SimGBM(S0, T, r - q - 0.5 * v ^ 2, v)
+        payoff = WorksheetFunction.Max(C_P * (sharePrice - K), 0)
+        sum = sum + payoff
+    Next i
+    MCMEuroGBM = Exp(-r * T) * sum / Runs
+    
+End Function
+
+
+=======================================================================================================================
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This function applies the Monte Carlo method to value average price (Asian) options based on GBM model
+' Terminal payoff of the Asian option is max(optType*(Average asset price - Strike),0)
+' Average price is calculated as arithmetic average of stock prices at the end of each of sub periods.
+
+'   Input:
+'       optType     "c" for call, "p" for put option
+'       S0          spot price of the underlying security (stock)
+'       K           strike price of the option
+'       T           time to maturity
+'       r           risk free interest rate
+'       q           dividend yield
+'       v           volatility of the underlying security
+'       n           number of periods in the time path
+'       Runs        number of time paths to simulate
+'   Output:
+'       MCMAsianGBM   simulated price of the European option
+
+Function MCMAsianGBM(ByVal optType As String, ByVal S0 As Double, ByVal K As Double, _
+    ByVal T As Double, ByVal r As Double, ByVal q As Double, ByVal v As Double, ByVal n As Long, ByVal Runs As Long)
+
+    Dim C_P, dt, i, j
+    Dim stock_ts(), option_cs()
+    
+    If optType = "c" Then
+         C_P = 1
+    ElseIf optType = "p" Then
+        C_P = -1
+    Else
+        MCMAsianGBM = CVErr(xlErrValue)
+        Exit Function
+    End If
+    dt = T / n
+    
+    ReDim stock_ts(1 To n), option_cs(1 To Runs)
+    For i = 1 To Runs
+        stock_ts(1) = SimGBM(S0, dt, r - q - 0.5 * v ^ 2, v)
+        For j = 2 To n
+            stock_ts(j) = SimGBM(stock_ts(j - 1), dt, r - q, v)
+        Next j
+        option_cs(i) = WorksheetFunction.Max(0, C_P * (WorksheetFunction.Average(stock_ts) - K))
+    Next i
+    MCMAsianGBM = WorksheetFunction.Average(option_cs) * Exp(-r * T)
+    
+End Function
+
+

@@ -1,0 +1,238 @@
+
+=======================================================================================================================
+
+Function SimGBM(ByVal S0 As Double, ByVal dt As Double, ByVal mu As Double, ByVal v As Double)
+    Randomize
+    If S0 < 0 Or v < 0 Then
+        SimGBM = CVErr(xlErrValue)
+        Exit Function
+    End If
+    SimGBM = S0 * Exp(mu * dt + v * WorksheetFunction.Norm_S_Inv(Rnd) * Sqr(dt))
+End Function
+
+=======================================================================================================================
+
+Function VarCov(dataRng As Range)
+
+    Dim i As Integer, j As Integer
+    Dim nCols As Integer
+    nCols = dataRng.Columns.Count
+    Dim matrix() As Double
+    ReDim matrix(1 To nCols, 1 To nCols)
+    
+    For i = 1 To nCols
+        For j = 1 To nCols
+           matrix(i, j) = WorksheetFunction.Covariance_S(dataRng.Columns(i), dataRng.Columns(j))
+        Next j
+    Next i
+    VarCov = matrix
+    
+End Function
+
+=======================================================================================================================
+
+Function CorrMat(ByVal dataRng As Range)
+
+    Dim i As Integer, j As Integer
+    Dim nCols As Integer
+    Dim matrix() As Double
+    
+    nCols = dataRng.Columns.Count
+    ReDim matrix(1 To nCols, 1 To nCols)
+    
+    For i = 1 To nCols
+        For j = 1 To nCols
+            matrix(i, j) = WorksheetFunction.Correl(dataRng.Columns(i), dataRng.Columns(j))
+        Next j
+    Next i
+    CorrMat = matrix
+End Function
+
+=======================================================================================================================
+
+Function Cholesky(ByVal matrix As Range)
+
+    Dim i As Integer
+    Dim j As Integer
+    Dim k As Integer
+    Dim l As Integer
+    Dim N As Integer
+    Dim S As Double
+    Dim C() As Double
+
+    N = matrix.Rows.Count
+    If matrix.Columns.Count <> N Then
+        MsgBox "Input must be square matrix.", vbExclamation, "Input Error"
+        Cholesky = C()
+        Exit Function
+    End If
+        
+    ReDim C(1 To N, 1 To N)
+    
+    For i = 1 To N Step 1
+        For j = i To N Step 1
+            S = matrix.Cells(i, j)
+            For k = i - 1 To 1 Step -1
+                S = S - C(i, k) * C(j, k)
+            Next k
+            If i = j Then
+                If S < 0 Then
+                    For k = 1 To N Step 1
+                        For l = 1 To N Step 1
+                            C(k, l) = 0
+                        Next l
+                    Next k
+                    Cholesky = C()
+                    Exit Function
+                End If
+                C(i, j) = Sqr(S)
+            Else
+                C(j, i) = S / C(i, i)
+            End If
+        Next j
+    Next i
+        
+    Cholesky = C()
+
+End Function
+
+=======================================================================================================================
+
+Function Cholesky_new(matrix)
+'matrix should be 2D array variable with equal number of elements in both dimension
+
+    Dim i As Integer
+    Dim j As Integer
+    Dim k As Integer
+    Dim l As Integer
+    Dim N As Integer   'N is number of elements in both dimension
+    Dim S As Double
+    Dim C() As Double
+    
+    N = UBound(matrix, 1) - LBound(matrix, 1) + 1
+    If UBound(matrix, 2) - LBound(matrix, 2) <> N - 1 Then
+        MsgBox "Input must be square matrix.", vbExclamation, "Input Error"
+        Cholesky_new = C()
+        Exit Function
+    End If
+        
+    ReDim C(1 To N, 1 To N)
+    
+    For i = 1 To N Step 1
+        For j = i To N Step 1
+            S = matrix(i, j)
+            For k = i - 1 To 1 Step -1
+                S = S - C(i, k) * C(j, k)
+            Next k
+            If i = j Then
+                If S < 0 Then
+                    For k = 1 To N Step 1
+                        For l = 1 To N Step 1
+                            C(k, l) = 0
+                        Next l
+                    Next k
+                    Cholesky_new = C()
+                    Exit Function
+                End If
+                C(i, j) = Sqr(S)
+            Else
+                C(j, i) = S / C(i, i)
+            End If
+        Next j
+    Next i
+        
+    Cholesky_new = C()
+
+End Function
+
+=======================================================================================================================
+
+Function simCorr(ByVal CorrMat As Range)
+    Dim nstock, i, X()
+    nstock = CorrMat.Columns.Count
+    ReDim X(1 To nstock)
+    
+    Randomize
+    With WorksheetFunction
+        For i = 1 To nstock
+            X(i) = .Norm_S_Inv(Rnd)
+        Next
+        simCorr = .MMult(X, .Transpose(Cholesky(CorrMat)))
+    End With
+
+End Function
+
+=======================================================================================================================
+
+Function simCorr_new(CorrMat)
+' CorrMat should be 2D array variable with equal number of elements in both dimension
+    Dim i, X(), nstock
+    nstock = UBound(CorrMat, 1) - LBound(CorrMat, 1) + 1
+    ReDim X(1 To nstock)
+    
+    Randomize
+    With WorksheetFunction
+        For i = 1 To nstock
+            X(i) = .Norm_S_Inv(Rnd)
+        Next
+        simCorr_new = .MMult(X, .Transpose(Cholesky_new(CorrMat)))
+    End With
+
+End Function
+
+=======================================================================================================================
+
+Function UnitRowVector(n As Integer)
+    Dim i As Integer
+    Dim vector()
+    ReDim vector(0, n - 1)
+    For i = 1 To n
+        vector(0, i - 1) = 1
+    Next i
+    UnitRowVector = vector
+End Function
+
+=======================================================================================================================
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Function UnitColVector returns a column vector with n elements, value of which are 1.
+'   Input:
+'       n    number of elements
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Function UnitColVector(n As Integer)
+    Dim i As Integer
+    Dim vector()
+    ReDim vector(n - 1, 0)
+    For i = 1 To n
+        vector(i - 1, 0) = 1
+    Next i
+    UnitColVector = vector
+End Function
+
+=======================================================================================================================
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Function VarCovConst returns variance-covariance matrix with constant correlation for data series
+'   Input:
+'       dataRng    data series stored in columns
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Function VarCovConst(dataRng As Range, ByVal rho As Double)
+
+    Dim i As Integer, j As Integer
+    Dim nCols As Integer
+    nCols = dataRng.Columns.Count
+    Dim matrix() As Double
+    ReDim matrix(1 To nCols, 1 To nCols)
+    
+    For i = 1 To nCols
+        For j = 1 To nCols
+            If j = i Then
+                matrix(i, j) = WorksheetFunction.Var_S(dataRng.Columns(j))
+            Else
+                matrix(i, j) = rho * WorksheetFunction.StDev_S(dataRng.Columns(i)) * WorksheetFunction.StDev_S(dataRng.Columns(j))
+            End If
+        Next j
+    Next i
+    VarCovConst = matrix
+    
+End Function

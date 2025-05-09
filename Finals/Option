@@ -1,0 +1,171 @@
+
+
+=======================================================================================================================
+
+Function CND(ByVal d As Double) As Double
+    CND = WorksheetFunction.Norm_S_Dist(d, True)
+End Function
+
+=======================================================================================================================
+
+Function BS(ByVal optType As String, ByVal S0 As Double, ByVal K As Double, _
+    ByVal T As Double, ByVal r As Double, ByVal q As Double, ByVal v As Double)
+
+    Dim d1 As Double, d2 As Double
+
+    d1 = (Log(S0 / K) + (r - q + v ^ 2 / 2) * T) / (v * Sqr(T))
+    d2 = d1 - v * Sqr(T)
+    Select Case optType
+        Case "c" ', "C"
+            BS = S0 * Exp(-q * T) * CND(d1) - K * Exp(-r * T) * CND(d2)
+        Case "p" ', "P"
+            BS = K * Exp(-r * T) * CND(-d2) - S0 * Exp(-q * T) * CND(-d1)
+        Case Else
+            BS = CVErr(xlErrValue)
+    End Select
+End Function
+
+=======================================================================================================================
+
+Function BSDelta(ByVal optType As String, ByVal S0 As Double, ByVal K _
+     As Double, ByVal T As Double, ByVal r As Double, ByVal q As Double, ByVal v As Double)
+                                                            
+    Dim d1 As Double, d2 As Double
+                                                
+    d1 = (Log(S0 / K) + (r - q + v ^ 2 / 2) * T) / (v * Sqr(T))
+
+    Select Case optType
+        Case "c"
+            BSDelta = Exp(-q * T) * CND(d1)
+        Case "p"
+            BSDelta = -Exp(-q * T) * CND(-d1)
+        Case Else
+            BSDelta = CVErr(xlErrValue)
+    End Select
+    
+End Function
+
+=======================================================================================================================
+
+Function Binomial_euro(ByVal optType As String, ByVal S0 As Double, ByVal K As Double, _
+    ByVal T As Double, ByVal r As Double, ByVal q As Double, ByVal v As Double, ByVal n As Long)
+
+    Dim optValue() As Double                    'option values in one step
+    Dim S() As Double                           'stock values in one step
+    Dim dt As Double                            'time step in the tree
+    Dim u As Double, d As Double, Pu As Double, Pd As Double  'binomial tree parameters
+    Dim pv As Double                            'discount factor
+    Dim i As Integer                            'running counter through the nodes
+    Dim j As Integer                            'running counter through the time step
+    Dim C_P As Integer                          'to indicate the option is call or put
+
+    dt = T / n
+    pv = Exp(-r * dt)
+
+    Select Case optType
+        Case "c"
+            C_P = 1
+        Case "p"
+            C_P = -1
+        Case Else
+            Binomial_euro = CVErr(xlErrValue)
+            Exit Function
+    End Select
+
+    ' The stock price S0 move to S0*u and S0*d in the next time step of the tree
+    ' u and d and probability of going up or down are calculated in the following
+    ' This is the standard CRR tree setup
+    u = Exp(v * Sqr(dt))
+    d = 1 / u
+    Pu = (Exp((r - q) * dt) - d) / (u - d)
+    Pd = 1 - Pu
+
+    ReDim optValue(n) 'dimension: 0 to n
+    ReDim S(n) 'dimension: 0 to n
+
+    ' initialise asset prices and option values at maturity (step n)
+    For i = 0 To n
+        S(i) = S0 * u ^ (n - i) * d ^ i
+        optValue(i) = WorksheetFunction.Max(0, C_P * (S(i) - K)) 'This is the terminal payoff of a call or put
+    Next i
+
+    ' stepping back the tree
+    For j = n - 1 To 0 Step -1
+        For i = 0 To j
+            optValue(i) = pv * (Pu * optValue(i) + Pd * optValue(i + 1))
+        Next i
+    Next j
+
+    'return the first element of the array to function
+    Binomial_euro = optValue(0)
+
+End Function
+
+=======================================================================================================================
+
+Function Binomial(ByVal optStyle As String, ByVal optType As String, ByVal S0 As Double, ByVal K As Double, _
+    ByVal T As Double, ByVal r As Double, ByVal q As Double, ByVal v As Double, ByVal n As Long)
+
+    Dim optValue() As Double                    'option values in one step
+    Dim S() As Double                           'stock values in one step
+    Dim dt As Double                            'time step in the tree
+    Dim u, d, Pu, Pd As Double                  'binomial tree parameters
+    Dim pv As Double                            'discount factor
+    Dim i As Integer                            'running counter through the nodes
+    Dim j As Integer                            'running counter through the time step
+    Dim C_P As Integer                          'to indicate the option is call or put
+
+    dt = T / n
+    pv = Exp(-r * dt)
+
+    Select Case optType
+    Case "c"
+        C_P = 1
+    Case "p"
+        C_P = -1
+    Case Else
+        Binomial = CVErr(xlErrValue)
+        Exit Function
+    End Select
+
+    ' The stock price S0 move to S0*u and S0*d in the next time step of the tree
+    ' u and d and probability of going up or down are calculated in the following
+    ' This is the standard CRR tree setup
+    u = Exp(v * Sqr(dt))
+    d = 1 / u
+    Pu = (Exp((r - q) * dt) - d) / (u - d)
+    Pd = 1 - Pu
+
+    ReDim optValue(n) 'dimension: 0 to n
+    ReDim S(n) 'dimension: 0 to n
+
+    ' initialise asset prices and option values at maturity (step n)
+    For i = 0 To n
+        S(i) = S0 * u ^ (n - i) * d ^ i
+        optValue(i) = WorksheetFunction.Max(0, C_P * (S(i) - K)) 'This is the terminal payoff of a call or put
+    Next i
+
+    ' stepping back the tree
+    For j = n - 1 To 0 Step -1
+        For i = 0 To j
+            Select Case optStyle
+                Case "euro"
+                    optValue(i) = pv * (Pu * optValue(i) + Pd * optValue(i + 1))
+                Case "amer"
+                    optValue(i) = pv * (Pu * optValue(i) + Pd * optValue(i + 1))
+                    S(i) = S(i) / u
+                    optValue(i) = WorksheetFunction.Max(optValue(i), C_P * (S(i) - K))
+                Case Else
+                    Binomial = CVErr(xlErrValue)
+                    Exit Function
+            End Select
+        Next i
+    Next j
+
+    'return the first element of the array to function
+    Binomial = optValue(0)
+
+End Function
+
+=======================================================================================================================
+

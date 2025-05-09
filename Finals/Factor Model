@@ -1,0 +1,134 @@
+
+=======================================================================================================================
+
+'*************************************************************
+'Function simfactor simulates excess return of a stock in a
+'factor model, up to four factors.
+'It is easy to generalize this function to N-factor model.
+'*************************************************************
+Function Simfactor(alpha, stde, beta1, mu1, std1, _
+    Optional beta2 = 0, Optional mu2 = 0, Optional std2 = 1, _
+    Optional beta3 = 0, Optional mu3 = 0, Optional std3 = 1, _
+    Optional beta4 = 0, Optional mu4 = 0, Optional std4 = 1)
+    
+    Application.Volatile
+    Randomize
+'To increase the number of factors in the function, we can easily
+'add more arguments
+    With WorksheetFunction
+        Simfactor = alpha + beta1 * .Norm_Inv(Rnd(), mu1, std1) _
+            + beta2 * .Norm_Inv(Rnd(), mu2, std2) _
+            + beta3 * .Norm_Inv(Rnd(), mu3, std3) _
+            + beta4 * .Norm_Inv(Rnd(), mu4, std4) _
+            + .Norm_Inv(Rnd(), 0, stde)
+    End With
+End Function
+
+=======================================================================================================================
+
+' Simulate IBM stock prices based on single-index model
+' Monte Carlo simulation
+Sub Factor_mcm()
+
+    Dim rf, S0, alpha, stde, beta1, mu1, std1, beta2, mu2, std2, beta3, mu3, std3
+    Dim nPeriod, nSim, t, i
+    ' counter t loops through month 1 to 12
+    ' counter i loops through 1000 times of simulation
+    Dim sim_id(), ret_ts(), price_ts(), price_cs()
+    
+    nPeriod = 12 'months
+    nSim = 1000 'simulations
+    
+    ThisWorkbook.Worksheets("MCM_VBA").Activate
+    
+    alpha = Range("B4")  'alpha coefficients in single-index model
+    stde = Range("B5")   'standard error of residuals in single-index model
+    beta1 = Range("B6")   'beta of market factor
+    mu1 = Range("B7")     'mean of market factor
+    std1 = Range("B8")    'standard deviation of market factor
+    beta2 = Range("B9")   'beta of market capitalization factor
+    mu2 = Range("B10")     'mean of market capitalization factor
+    std2 = Range("B11")    'standard deviation of market capitalization factor
+    beta3 = Range("B12")   'beta of book to market factor
+    mu3 = Range("B13")     'mean of book to market factor
+    std3 = Range("B14")    'standard HML of book to market factor
+    rf = Range("B15")     'risk-free rate
+    S0 = Range("B16")    'inital stocks price
+    
+    ReDim sim_id(1 To nSim, 1 To 1), ret_ts(1 To nPeriod, 1 To 1), price_ts(0 To nPeriod, 1 To 1), price_cs(1 To nSim, 1 To 1)
+    ' sim_id stores simulation index 1 to 1000. Array size: 1000 x 1
+    ' ret_ts stores time-series simulation of stock excess returns in one trial. Array size: 12 x 1
+    ' price_ts stores time-series simulation of stock prices in one trial. Array size: 13 x 1
+    ' price_cs stores cross-sectional simulation of stock price 12 months later. Array size: 1000 x 1
+    
+    'Initial stock prices
+    price_ts(0, 1) = S0
+    
+    For i = 1 To nSim
+        sim_id(i, 1) = i
+        For t = 1 To nPeriod
+            ret_ts(t, 1) = Simfactor(alpha, stde, beta1, mu1, std1, beta2, mu2, std2, beta3, mu3, std3)
+            price_ts(t, 1) = price_ts(t - 1, 1) * Exp(ret_ts(t, 1) + rf)
+        Next t
+        price_cs(i, 1) = price_ts(nPeriod, 1)
+    Next i
+    
+    Range(Cells(20, 1), Cells(19 + nSim, 1)) = sim_id
+    Range(Cells(20, 2), Cells(19 + nSim, 2)) = price_cs
+    Range(Cells(20, 2), Cells(19 + nSim, 2)).NumberFormat = "0.00"
+End Sub
+
+
+=======================================================================================================================
+
+
+' Simulate CAF stock prices based on single-index model
+' Bootstrapping simulation
+
+Sub Factor_boostrap()
+
+    Dim rf, S0, alpha, beta, mkt(), e()
+    ' mkt() stores market excess return data
+    ' e() stores residual data
+    Dim nData, nPeriod, nSim, t, i
+    ' counter t loops through day 1 to 22
+    ' counter i loops through 10000 times of simulation
+    Dim sim_id(), ret_ts(), price_ts(), price_cs()
+    
+    nPeriod = 22 'days
+    nSim = 10000 'simulations
+    
+    ThisWorkbook.Worksheets("Bootstrap_Excel").Activate
+    mkt = Range("D4", Range("D4").End(xlDown))
+    e = Range("F4", Range("F4").End(xlDown))
+    nData = Range("D4", Range("D4").End(xlDown)).Count 'number of observations
+    
+    ThisWorkbook.Worksheets("Bootstrap_VBA").Activate
+    
+    alpha = Range("B4")  'alpha coefficients in single-index model
+    beta = Range("B5")   'beta coefficients in single-index model
+    rf = Range("B6")     'risk-free rate
+    S0 = Range("B7")     'inital stocks price
+    
+    ReDim sim_id(1 To nSim, 1 To 1), ret_ts(1 To nPeriod, 1 To 1), price_ts(0 To nPeriod, 1 To 1), price_cs(1 To nSim, 1 To 1)
+    ' sim_id stores simulation index 1 to 10000. Array size: 10000 x 1
+    ' ret_ts stores time-series simulation of stock excess returns in one trial. Array size: 22 x 1
+    ' price_ts stores time-series simulation of stock prices in one trial. Array size: 23 x 1
+    ' price_cs stores cross-sectional simulation of stock price 22 days later. Array size: 10000 x 1
+    
+    'Initial stock prices
+    price_ts(0, 1) = S0
+    
+    For i = 1 To nSim
+        sim_id(i, 1) = i
+        For t = 1 To nPeriod
+            ret_ts(t, 1) = alpha + beta * mkt(bootseeds(nData), 1) + e(bootseeds(nData), 1)
+            price_ts(t, 1) = price_ts(t - 1, 1) * Exp(ret_ts(t, 1) + rf)
+        Next t
+        price_cs(i, 1) = price_ts(nPeriod, 1)
+    Next i
+    
+    Range(Cells(11, 1), Cells(10 + nSim, 1)) = sim_id
+    Range(Cells(11, 2), Cells(10 + nSim, 2)) = price_cs
+    Range(Cells(11, 2), Cells(10 + nSim, 2)).NumberFormat = "0.00"
+End Sub
